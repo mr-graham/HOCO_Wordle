@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Portola Wordle</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #121213;
+            color: #ffffff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            margin: 0;
+        }
+
+        h1 {
+            margin: 10px 0 5px 0;
+            letter-spacing: 2px;
+            font-size: 2.5rem;
+            color: #a855f7; /* Vibrant Purple */
+        }
+
+        .stats-container {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        h3 {
+            margin: 0 0 5px 0;
+            color: #818384;
+            font-weight: normal;
+        }
+
+        .tally {
+            font-size: 1rem;
+            color: #4da8da;
+            font-weight: bold;
+            margin: 0;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-rows: repeat(6, 1fr);
+            gap: 5px;
+            margin-bottom: 20px;
+        }
+
+        .row {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 5px;
+        }
+
+        .tile {
+            width: 60px;
+            height: 60px;
+            border: 2px solid #3a3a3c;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            font-weight: bold;
+            text-transform: uppercase;
+            box-sizing: border-box;
+            transition: transform 0.3s, background-color 0.3s, border-color 0.3s;
+        }
+
+        /* Colors for Wordle logic */
+        .correct {
+            background-color: #538d4e; /* Green */
+            border-color: #538d4e;
+        }
+
+        .present {
+            background-color: #b59f3b; /* Yellow */
+            border-color: #b59f3b;
+        }
+
+        .absent {
+            background-color: #3a3a3c; /* Gray */
+            border-color: #3a3a3c;
+        }
+
+        /* Input Controls */
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        input[type="text"] {
+            padding: 10px;
+            font-size: 1.2rem;
+            border-radius: 5px;
+            border: 1px solid #565758;
+            background-color: #121213;
+            color: white;
+            text-transform: uppercase;
+            width: 150px;
+            text-align: center;
+            outline: none;
+        }
+
+        input[type="text"]:focus {
+            border-color: #818384;
+        }
+
+        button {
+            padding: 10px 20px;
+            font-size: 1.2rem;
+            background-color: #538d4e;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background-color: #43713e;
+        }
+
+        button:disabled {
+            background-color: #3a3a3c;
+            cursor: not-allowed;
+            color: #818384;
+        }
+
+        #next-btn {
+            background-color: #4da8da;
+            display: none;
+            margin-top: 10px;
+        }
+        
+        #next-btn:hover {
+            background-color: #388bb8;
+        }
+
+        .message {
+            font-size: 1rem;
+            font-weight: bold;
+            height: 30px;
+            color: #e94560; /* Highlight hard mode errors in red */
+            margin-bottom: 10px;
+            background-color: rgba(255,255,255,0.1);
+            padding: 5px 15px;
+            border-radius: 5px;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .message.show {
+            opacity: 1;
+        }
+
+        /* Keyboard Styles */
+        #keyboard {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-bottom: 20px;
+            width: 100%;
+            max-width: 500px;
+        }
+
+        .kbd-row {
+            display: flex;
+            justify-content: center;
+            gap: 6px;
+        }
+
+        .key {
+            background-color: #818384; /* Default unused grey */
+            color: white;
+            border-radius: 4px;
+            padding: 15px 10px;
+            font-weight: bold;
+            font-size: 1.1rem;
+            cursor: default;
+            user-select: none;
+            flex: 1;
+            text-align: center;
+            max-width: 45px;
+            transition: background-color 0.3s;
+        }
+
+        /* Override base key color based on state */
+        .key.correct { background-color: #538d4e; }
+        .key.present { background-color: #b59f3b; }
+        .key.absent { background-color: #3a3a3c; }
+
+    </style>
+</head>
+<body>
+
+    <h1>Portola Wordle</h1>
+    
+    <div class="stats-container">
+        <h3 id="round-info">Round 1 of 5</h3>
+        <p class="tally" id="tally-info">Total Guesses: 0</p>
+    </div>
+    
+    <div class="message" id="message"></div>
+
+    <div class="grid" id="grid">
+        <!-- Grid will be generated by JS -->
+    </div>
+
+    <div class="controls" id="controls">
+        <input type="text" id="guess-input" maxlength="5" autocomplete="off" autofocus placeholder="TYPE WORD" />
+        <button id="submit-btn">Guess</button>
+    </div>
+    
+    <!-- Keyboard Container -->
+    <div id="keyboard"></div>
+
+    <button id="next-btn">Next Round ➔</button>
+
+    <script>
+        // Game Configuration
+        const targetWords = ["SORRY", "DANCE", "CANDY", "COURT", "BOARD"];
+        const maxGuesses = 6;
+        const wordLength = 5;
+
+        // Keyboard Configuration
+        const keyboardLayout = [
+            ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"],
+            ["A", "S", "D", "F", "G", "H", "J", "K", "L"],
+            ["Z", "X", "C", "V", "B", "N", "M"]
+        ];
+
+        // Game State
+        let currentRound = 0;
+        let currentRow = 0;
+        let gameOver = false;
+        
+        // Tally & Score State
+        let totalGuessesCount = 0;
+        let wordsGuessed = 0;
+
+        // Hard Mode State
+        let hardGreens = [null, null, null, null, null];
+        let hardYellows = [];
+
+        // DOM Elements
+        const gridEl = document.getElementById('grid');
+        const inputEl = document.getElementById('guess-input');
+        const submitBtn = document.getElementById('submit-btn');
+        const nextBtn = document.getElementById('next-btn');
+        const messageEl = document.getElementById('message');
+        const roundInfoEl = document.getElementById('round-info');
+        const tallyInfoEl = document.getElementById('tally-info');
+        const controlsEl = document.getElementById('controls');
+        const keyboardEl = document.getElementById('keyboard');
+
+        // Generate Keyboard HTML
+        function initKeyboard() {
+            keyboardEl.innerHTML = '';
+            keyboardLayout.forEach(row => {
+                const rowDiv = document.createElement('div');
+                rowDiv.className = 'kbd-row';
+                row.forEach(letter => {
+                    const keyDiv = document.createElement('div');
+                    keyDiv.className = 'key';
+                    keyDiv.id = `key-${letter}`;
+                    keyDiv.innerText = letter;
+                    rowDiv.appendChild(keyDiv);
+                });
+                keyboardEl.appendChild(rowDiv);
+            });
+        }
+
+        // Initialize Game/Round
+        function initRound() {
+            gridEl.innerHTML = '';
+            currentRow = 0;
+            gameOver = false;
+            
+            // Reset Hard Mode trackers for the new word
+            hardGreens = [null, null, null, null, null];
+            hardYellows = [];
+            
+            // Reset keyboard colors
+            document.querySelectorAll('.key').forEach(key => {
+                key.classList.remove('absent', 'present', 'correct');
+                key.removeAttribute('data-state');
+            });
+            
+            roundInfoEl.innerText = `Round ${currentRound + 1} of ${targetWords.length}`;
+            tallyInfoEl.innerText = `Total Guesses: ${totalGuessesCount}`;
+            hideMessage();
+            inputEl.value = '';
+            inputEl.disabled = false;
+            submitBtn.disabled = false;
+            controlsEl.style.display = 'flex';
+            nextBtn.style.display = 'none';
+
+            // Create Grid
+            for (let r = 0; r < maxGuesses; r++) {
+                const rowDiv = document.createElement('div');
+                rowDiv.className = 'row';
+                rowDiv.id = `row-${r}`;
+                
+                for (let c = 0; c < wordLength; c++) {
+                    const tileDiv = document.createElement('div');
+                    tileDiv.className = 'tile';
+                    tileDiv.id = `tile-${r}-${c}`;
+                    rowDiv.appendChild(tileDiv);
+                }
+                gridEl.appendChild(rowDiv);
+            }
+            inputEl.focus();
+        }
+
+        // Live updating the grid as the user types
+        inputEl.addEventListener('input', () => {
+            if (gameOver) return;
+            // Force letters only
+            inputEl.value = inputEl.value.replace(/[^a-zA-Z]/g, '').toUpperCase();
+            
+            const currentGuess = inputEl.value;
+            for (let i = 0; i < wordLength; i++) {
+                const tile = document.getElementById(`tile-${currentRow}-${i}`);
+                tile.innerText = currentGuess[i] || '';
+            }
+        });
+
+        // Submit on Enter key
+        inputEl.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                submitGuess();
+            }
+        });
+
+        submitBtn.addEventListener('click', submitGuess);
+
+        function validateHardMode(guess) {
+            // Check Greens
+            for (let i = 0; i < wordLength; i++) {
+                if (hardGreens[i] && guess[i] !== hardGreens[i]) {
+                    let position = ["1st", "2nd", "3rd", "4th", "5th"][i];
+                    return `Hard Mode: ${position} letter must be ${hardGreens[i]}`;
+                }
+            }
+            // Check Yellows
+            for (let char of hardYellows) {
+                if (!guess.includes(char)) {
+                    return `Hard Mode: Guess must contain the letter ${char}`;
+                }
+            }
+            return null; // Valid guess
+        }
+
+        function submitGuess() {
+            if (gameOver) return;
+
+            const guess = inputEl.value.toUpperCase();
+            if (guess.length !== wordLength) {
+                showMessage("Not enough letters");
+                return;
+            }
+
+            // Hard Mode Validation
+            const hardModeError = validateHardMode(guess);
+            if (hardModeError) {
+                showMessage(hardModeError);
+                return; // Stop here, do not clear input, do not consume guess
+            }
+
+            // Valid guess
+            inputEl.value = ''; 
+            hideMessage();
+            evaluateGuess(guess);
+        }
+
+        function evaluateGuess(guess) {
+            totalGuessesCount++;
+            tallyInfoEl.innerText = `Total Guesses: ${totalGuessesCount}`;
+
+            const target = targetWords[currentRound];
+            let targetLetterCount = {};
+            let resultColors = Array(wordLength).fill('absent'); 
+
+            // Count occurrences of each letter in the target word
+            for (let i = 0; i < wordLength; i++) {
+                const char = target[i];
+                targetLetterCount[char] = (targetLetterCount[char] || 0) + 1;
+            }
+
+            // PASS 1: Find Exact Matches (Green)
+            for (let i = 0; i < wordLength; i++) {
+                if (guess[i] === target[i]) {
+                    resultColors[i] = 'correct';
+                    targetLetterCount[guess[i]] -= 1; 
+                    
+                    // Update Hard Mode state
+                    hardGreens[i] = guess[i];
+                }
+            }
+
+            // PASS 2: Find Partial Matches (Yellow)
+            for (let i = 0; i < wordLength; i++) {
+                if (resultColors[i] !== 'correct') {
+                    const char = guess[i];
+                    if (targetLetterCount[char] && targetLetterCount[char] > 0) {
+                        resultColors[i] = 'present';
+                        targetLetterCount[char] -= 1; 
+                        
+                        // Update Hard Mode state
+                        if (!hardYellows.includes(char)) {
+                            hardYellows.push(char);
+                        }
+                    }
+                }
+            }
+
+            // Apply colors to UI and Keyboard
+            for (let i = 0; i < wordLength; i++) {
+                const tile = document.getElementById(`tile-${currentRow}-${i}`);
+                tile.innerText = guess[i];
+                
+                // Add delay for flip effect
+                setTimeout(() => {
+                    tile.classList.add(resultColors[i]);
+
+                    // Update Keyboard visual states
+                    const keyEl = document.getElementById(`key-${guess[i]}`);
+                    if (keyEl) {
+                        const currentState = keyEl.getAttribute('data-state');
+                        const newState = resultColors[i];
+                        
+                        // Prevent downgrading a state (e.g., green to yellow)
+                        const states = { 'absent': 1, 'present': 2, 'correct': 3 };
+                        const currentRank = states[currentState] || 0;
+                        const newRank = states[newState] || 0;
+
+                        if (newRank > currentRank) {
+                            keyEl.setAttribute('data-state', newState);
+                            keyEl.classList.remove('absent', 'present', 'correct');
+                            keyEl.classList.add(newState);
+                        }
+                    }
+                }, i * 150);
+            }
+
+            // Check Win/Loss
+            const won = resultColors.every(color => color === 'correct');
+            
+            setTimeout(() => {
+                if (won) {
+                    wordsGuessed++;
+                    endRound(true);
+                } else if (currentRow === maxGuesses - 1) {
+                    endRound(false);
+                } else {
+                    currentRow++;
+                    inputEl.focus();
+                }
+            }, wordLength * 150 + 100);
+        }
+
+        let messageTimeout;
+        function showMessage(msg) {
+            messageEl.innerText = msg;
+            messageEl.classList.add('show');
+            clearTimeout(messageTimeout);
+            
+            // Keep message on screen longer for hard mode rules
+            messageTimeout = setTimeout(() => {
+                if (!gameOver) hideMessage();
+            }, 3500);
+        }
+
+        function hideMessage() {
+            messageEl.classList.remove('show');
+        }
+
+        function endRound(won) {
+            gameOver = true;
+            inputEl.disabled = true;
+            submitBtn.disabled = true;
+            controlsEl.style.display = 'none';
+
+            if (won) {
+                showMessage("Great job! Word found.");
+            } else {
+                showMessage(`The word was ${targetWords[currentRound]}`);
+            }
+
+            if (currentRound < targetWords.length - 1) {
+                nextBtn.style.display = 'block';
+                nextBtn.innerText = 'Next Round ➔';
+            } else {
+                // End of entire 5-round game
+                roundInfoEl.innerText = `FINAL SCORE: ${wordsGuessed} / ${targetWords.length} Words`;
+                tallyInfoEl.innerText = `Final Total Guesses: ${totalGuessesCount}`;
+                
+                // Show final summary in the message box
+                setTimeout(() => {
+                    showMessage(`Game Over! You got ${wordsGuessed} words using ${totalGuessesCount} guesses.`);
+                }, 1500);
+
+                nextBtn.style.display = 'block';
+                nextBtn.innerText = 'Play Again ↻';
+                currentRound = -1; // Reset to trigger full restart on click
+            }
+        }
+
+        nextBtn.addEventListener('click', () => {
+            if (currentRound === -1) {
+                // Total Restart
+                totalGuessesCount = 0;
+                wordsGuessed = 0;
+                currentRound = 0;
+            } else {
+                currentRound++;
+            }
+            initRound();
+        });
+
+        // Initialize Keyboard HTML layout
+        initKeyboard();
+
+        // Start the game
+        initRound();
+    </script>
+</body>
+</html>
